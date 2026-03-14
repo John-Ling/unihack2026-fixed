@@ -459,7 +459,7 @@ export default function AppView() {
             }
           }
           // Render labels
-          const showLabel = node.type !== "resource";
+          const showLabel = node.type !== "resource"  && globalScale >= 2;
 
           if (showLabel) {
             ctx.fillStyle = "rgba(255, 255, 255, 0)";
@@ -481,7 +481,7 @@ export default function AppView() {
           ctx.fillStyle = color;
 
           if (node.type === "resource") {
-            const rectSize = 12 + node.group * 2;
+            const rectSize = 6;
             ctx.beginPath();
             ctx.arc(node.x, node.y, rectSize / 2, 0, 2 * Math.PI);
             ctx.fill();
