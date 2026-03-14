@@ -12,7 +12,7 @@ export type Node = {
   name: string;
   group: number;
   depth: number;
-  type?: "topic" | "resource";
+  type?: "top-level" | "topic" | "resource";
   url?: string;
   source?: "web" | "youtube" | "wiki";
   favicon?: string;

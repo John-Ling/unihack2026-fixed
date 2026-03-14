@@ -56,14 +56,6 @@ const INTEREST_LABELS: Record<InterestId, string> = {
   finance: "Finance",
 };
 
-const INITIAL_NODES: Node[] = HIGH_LEVEL_CATEGORIES.map((name, idx) => ({
-  id: idx,
-  name,
-  group: 0,
-  depth: 0,
-  type: "topic",
-}));
-
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
   ssr: false,
 });
@@ -91,9 +83,12 @@ function isResourceNode(node: Node): node is ResourceNode {
 
 export default function AppView() {
   const { user } = useSession();
+  const fanRef = useRef<HTMLAudioElement | null>(null);
+  const clickRef = useRef<HTMLAudioElement | null>(null);
 
   const [interestsSelected, setInterestsSelected] = useState(false);
   const [selectedInterests, setSelectedInterests] = useState<InterestId[]>([]);
+
 
   const getInitialNodes = (): Node[] => {
     if (selectedInterests.length === 0) {
@@ -102,7 +97,7 @@ export default function AppView() {
         name,
         group: 0,
         depth: 0,
-        type: "topic" as const,
+        type: "top-level",
       }));
     }
     return selectedInterests.map((id, idx) => ({
@@ -110,7 +105,7 @@ export default function AppView() {
       name: INTEREST_LABELS[id],
       group: 0,
       depth: 0,
-      type: "topic" as const,
+      type: "top-level",
     }));
   };
 
@@ -121,12 +116,17 @@ export default function AppView() {
 
   const [graphDataLoaded, setGraphDataLoaded] = useState<boolean>(false);
   const [currentDepth, setCurrentDepth] = useState<number>(0);
-  const [loading, setLoading] = useState<number | null>(null);
+  const [nodesExplored, setNodesExplored] = useState<number>(0);
+
   const graphRef = useRef<any>(null);
-  const focusedNodeRef = useRef<Node | null>(null);
   const nextId = useRef(getInitialNodes().length);
   const imageCacheRef = useRef(new Map<string, HTMLImageElement | null>());
   const nodeStatesRef = useRef<Record<number, "idle" | "loading">>({});
+
+  useEffect(() => {
+    fanRef.current = new Audio("/audio/fan.wav");
+    clickRef.current = new Audio("/audio/click.wav");
+  }, []);
 
   // Initialize node states for initial nodes
   useEffect(() => {
@@ -177,23 +177,23 @@ export default function AppView() {
       nodes: data.nodes.map((node) =>
         node.type === "resource"
           ? {
-              id: node.id,
-              name: node.name,
-              group: node.group,
-              depth: node.depth,
-              type: node.type,
-              url: node.url,
-              source: node.source,
-              favicon: node.favicon,
-              snippet: node.snippet,
-            }
+            id: node.id,
+            name: node.name,
+            group: node.group,
+            depth: node.depth,
+            type: node.type,
+            url: node.url,
+            source: node.source,
+            favicon: node.favicon,
+            snippet: node.snippet,
+          }
           : {
-              id: node.id,
-              name: node.name,
-              group: node.group,
-              depth: node.depth,
-              type: node.type,
-            },
+            id: node.id,
+            name: node.name,
+            group: node.group,
+            depth: node.depth,
+            type: node.type,
+          },
       ),
       links: data.links.map((link) => ({
         source: (link.source as Node)?.id ?? link.source,
@@ -213,16 +213,22 @@ export default function AppView() {
         return;
       }
 
+      clickRef.current?.play();
 
+      // Don't explore any nodes that have children i.e have already been explored
       if (hasChildren(node.id)) {
         graphRef.current?.centerAt(node.x, node.y, 1000);
+        // maybe play a diff sound
         return;
       }
+
+
 
       graphRef.current?.centerAt(node.x, node.y, 500);
 
       nodeStatesRef.current[node.id] = 'loading';
       setCurrentDepth(node.depth);
+      setNodesExplored(explored => explored + 1);
 
       let result: ExpansionResponse | null = null;
       // Refactor to tanstack
@@ -241,9 +247,10 @@ export default function AppView() {
       }
 
       result = await response.json();
-        
+
 
       if (result) {
+
         setData((prev) => {
           const existingTopicNames = new Set(
             prev.nodes
@@ -311,7 +318,8 @@ export default function AppView() {
             source: node.id,
             target: newNode.id,
           }));
-
+          
+          fanRef.current?.play();
           return {
             nodes: [...prev.nodes, ...newNodes],
             links: [...prev.links, ...newLinks],
@@ -363,8 +371,10 @@ export default function AppView() {
 
   return (
     <div className={cn("min-h-screen w-full flex flex-col", styles.root)}>
-      <Navbar />
-      <MetricPanel depthLevel={currentDepth}  />
+      <div className="fixed top-0 left-0">
+        <Navbar />
+        <MetricPanel depthLevel={currentDepth} nodesExplored={nodesExplored}/>
+      </div>
 
       <ForceGraph2D
         ref={graphRef}
@@ -383,14 +393,20 @@ export default function AppView() {
             (n) => n + fontSize * 0.2,
           );
 
+          console.log(node.type)
           const isResource = node.type === "resource";
+          const isTopLevel = node.type === "top-level";
+
+
+          // Colour nodes based on states or type
 
           const nodeColor = isResource
             ? "oklch(0.7294 0.111 66.71)"
-            : nodeStatesRef.current[node.id] === "loading"
-              ? 'oklch(0.6765 0.0715 57.72)' : hasChildren(node.id)
-                ? "oklch(0.6941 0.1233 238.24)"
-                : "oklch(0.4176 0.0592 238.24)";
+            : isTopLevel ? "oklch(0.6971 0.1455 66.71)"
+              : nodeStatesRef.current[node.id] === "loading"
+                ? 'oklch(0.6765 0.0715 57.72)' : hasChildren(node.id)
+                  ? "oklch(0.6941 0.1233 238.24)"
+                  : "oklch(0.4176 0.0592 238.24)";
 
           if (!isResource) {
             // Topic nodes
@@ -405,7 +421,6 @@ export default function AppView() {
             const rectY = node.y - radius;
 
             ctx.beginPath();
-            ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI);
             ctx.fillStyle = nodeColor;
             ctx.fill();
 
@@ -440,6 +455,8 @@ export default function AppView() {
               if (cachedImage && cachedImage.complete) {
                 ctx.save();
                 ctx.beginPath();
+                ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI);
+                ctx.clip();
                 ctx.imageSmoothingEnabled = true;
                 ctx.imageSmoothingQuality = 'high';
                 // ctx.filter = 'hue-rotate(185deg) saturate(1.15)';
@@ -452,14 +469,14 @@ export default function AppView() {
                     rectSize,
                     rectSize
                   );
-                } catch {}
+                } catch { }
 
                 ctx.restore();
               }
             }
           }
           // Render labels
-          const showLabel = node.type !== "resource"  && globalScale >= 2;
+          const showLabel = node.type !== "resource" && globalScale >= 2.5;
 
           if (showLabel) {
             ctx.fillStyle = "rgba(255, 255, 255, 0)";
