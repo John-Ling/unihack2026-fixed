@@ -1,8 +1,11 @@
 "use client";
 
-import React, { useState, useRef, useCallback } from 'react';
-import { GraphData, Link, Node } from '@/features/graph/interfaces';
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { GraphData, Link, Node } from '@/features/graph/types';
+import { loadGraph, upsertGraph } from '@/features/graph/supabase-graph-service';
 import dynamic from 'next/dynamic';
+import { Button } from '@/components/ui/button';
+import { useSession } from '@/hooks/useSession';
 
 const HIGH_LEVEL_CATEGORIES = [
   'Computer Science',
@@ -26,13 +29,14 @@ const COLORS = [
   '#ffeaa7', '#dfe6e9', '#a29bfe', '#fd79a8'
 ];
 
-
 const ForceGraph2D = dynamic(() => import('react-force-graph-2d'), {
   ssr: false,
 });
 
 export default function AppView() {
-   const [data, setData] = useState<GraphData>({
+  const { user, isAnonymous } = useSession();
+
+  const [data, setData] = useState<GraphData>({
     nodes: INITIAL_NODES,
     links: []
   });
@@ -40,6 +44,25 @@ export default function AppView() {
   const [loading, setLoading] = useState<number | null>(null);
   const graphRef = useRef<any>(null);
   const nextId = useRef(INITIAL_NODES.length);
+
+  // Load graph data
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    console.log("Loading data");
+    async function loadData() {
+      const graph = await loadGraph(user!.id);
+      console.log("FOUND GRAPH ", graph)
+      console.log("FOUND GRAPH ", graph.graph_data)
+      if (graph.graph_data) {
+        setData(graph.graph_data);
+      }
+    }
+      
+    loadData(); 
+  }, [user]);
 
   const handleNodeClick = useCallback(async (node: any) => {
     if (loading !== null) return;
@@ -102,8 +125,15 @@ export default function AppView() {
     }
   }, [data.links, loading]);
 
+  if (!user) {
+    return;
+  }
+
+  console.log(user.id);
+
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
+      <Button onClick={() => upsertGraph(user.id, data)}>Upload graph data</Button>
       <ForceGraph2D
         ref={graphRef}
         graphData={data}
