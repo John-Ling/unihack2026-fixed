@@ -115,12 +115,9 @@ export default function InterestSelection({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm">
       <div className="w-full max-w-2xl p-6">
         <div className="mb-8 text-center">
-          <h2 className="text-2xl font-semibold tracking-tight">
-            Choose Your Interests
+          <h2 className="text-4xl font-barlow font-semibold tracking-tight">
+            What are you interested in?
           </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Select at least one topic to personalize your learning graph
-          </p>
         </div>
 
         <div className="grid grid-cols-4 gap-3">
@@ -133,8 +130,8 @@ export default function InterestSelection({
                 key={interest.id}
                 onClick={() => toggle(interest.id)}
                 className={cn(
-                  "flex flex-col items-center justify-center rounded-xl border-2 p-3 transition-all duration-200",
-                  "hover:border-primary/50 hover:bg-accent/50",
+                  "flex flex-col items-center justify-center rounded-xl border-2 p-3 transition-all duration-75",
+                  "hover:border-primary/50",
                   isSelected
                     ? "border-primary bg-primary/10"
                     : "border-border bg-card",
@@ -150,7 +147,7 @@ export default function InterestSelection({
                 </div>
                 <span
                   className={cn(
-                    "mt-2 text-xs font-medium",
+                    "mt-2 text-xs font-jet font-medium ",
                     isSelected ? "text-primary" : "text-muted-foreground",
                   )}
                 >

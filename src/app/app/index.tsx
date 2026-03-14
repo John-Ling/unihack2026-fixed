@@ -14,7 +14,6 @@ import {
 } from "@/features/graph/supabase-graph-service";
 
 import dynamic from "next/dynamic";
-import { Button } from "@/components/ui/button";
 import { useSession } from "@/hooks/useSession";
 import styles from "./app.module.css";
 import { cn } from "@/utils/tailwind";
