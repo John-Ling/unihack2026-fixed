@@ -36,7 +36,7 @@ function parseSubcategories(result: string) {
     }
   }
 
-  return subcategories.slice(0, 7).map((s: string) => s.trim()).filter(Boolean);
+  return subcategories.slice(0, 3).map((s: string) => s.trim()).filter(Boolean);
 }
 
 function getFaviconUrl(url: string) {
@@ -181,11 +181,11 @@ export async function POST(request: Request) {
       messages: [
         {
           role: 'system',
-          content: 'You are a helpful assistant that generates subcategories for a given topic. Return exactly 6-7 subcategories as a JSON array of strings. Each subcategory should be a specific, meaningful subfield or area within the given category.',
+          content: 'You are a helpful assistant that generates subcategories for a given topic. Return around 3 subcategories as a JSON array of strings. Each subcategory should be a specific, meaningful subfield or area within the given category.',
         },
         {
           role: 'user',
-          content: `Generate 6-7 subcategories for: "${category}". Return only a JSON array of strings, nothing else.`,
+          content: `Generate 3 subcategories for: "${category}". Return only a JSON array of strings, nothing else.`,
         },
       ],
       response_format: { type: 'json_object' },

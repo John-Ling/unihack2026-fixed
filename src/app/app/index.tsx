@@ -101,7 +101,7 @@ export default function AppView() {
     links: []
   });
 
-  const [graphDataLoaded, setGraphDataLoaded]= useState<boolean>(false);
+  const [graphDataLoaded, setGraphDataLoaded] = useState<boolean>(false);
   const [currentDepth, setCurrentDepth] = useState<number>(0);
   const [loading, setLoading] = useState<number | null>(null);
   const graphRef = useRef<any>(null);
@@ -132,14 +132,14 @@ export default function AppView() {
         const normalisedGraph = normaliseGraphData(graph.graph_data);
         setData(normalisedGraph);
         setData(graph.graph_data);
-        
+
         // Initialize node states for loaded nodes
         const loadedStates: Record<number, 'idle' | 'loading'> = {};
         graph.graph_data.nodes.forEach(node => {
           loadedStates[node.id] = 'idle';
         });
         nodeStatesRef.current = loadedStates;
-        
+
         // Sync nextId so new nodes don't collide with existing ones
         const maxId = normalisedGraph.nodes.length > 0
           ? Math.max(...normalisedGraph.nodes.map((n: Node) => n.id))
@@ -148,9 +148,9 @@ export default function AppView() {
         setGraphDataLoaded(true);
       }
     }
-      
+
     if (!graphDataLoaded) {
-      loadData(); 
+      loadData();
     }
   }, [user]);
 
@@ -160,23 +160,23 @@ export default function AppView() {
       nodes: data.nodes.map((node) =>
         node.type === 'resource'
           ? {
-              id: node.id,
-              name: node.name,
-              group: node.group,
-              depth: node.depth,
-              type: node.type,
-              url: node.url,
-              source: node.source,
-              favicon: node.favicon,
-              snippet: node.snippet,
-            }
+            id: node.id,
+            name: node.name,
+            group: node.group,
+            depth: node.depth,
+            type: node.type,
+            url: node.url,
+            source: node.source,
+            favicon: node.favicon,
+            snippet: node.snippet,
+          }
           : {
-              id: node.id,
-              name: node.name,
-              group: node.group,
-              depth: node.depth,
-              type: node.type,
-            }
+            id: node.id,
+            name: node.name,
+            group: node.group,
+            depth: node.depth,
+            type: node.type,
+          }
       ),
       links: data.links.map((link) => ({
         source: (link.source as Node)?.id ?? link.source,
@@ -198,18 +198,12 @@ export default function AppView() {
 
       if (loading !== null) return;
 
-      const hasChildren = data.links.some(
-        (link) => getLinkNodeId(link.source) === node.id,
-      );
-      if (hasChildren) {
       if (hasChildren(node.id)) {
         graphRef.current?.centerAt(node.x, node.y, 1000);
-        graphRef.current?.zoom(5, 4000);
         return;
       }
 
       graphRef.current?.centerAt(node.x, node.y, 500);
-      graphRef.current?.zoom(5, 4000);
 
       setLoading(node.id);
       nodeStatesRef.current[node.id] = 'loading';
@@ -313,7 +307,7 @@ export default function AppView() {
     return data.links.some(
       (link) => getLinkNodeId(link.source) === nodeId
     );
-  }, [data.links]);
+  }
 
   if (!user) {
     return;
@@ -339,7 +333,14 @@ export default function AppView() {
           ctx.font = `${fontSize}px Sans-Serif`;
           const textWidth = ctx.measureText(label).width;
           const bckgDimensions = [textWidth, fontSize].map(n => n + fontSize * 0.2);
-          const nodeColor = nodeStatesRef.current[node.id] === "loading" ? '#ffd700' : hasChildren(node.id) ?  "oklch(0.6941 0.1233 238.24)" : "oklch(0.5412 0.0789 238.24)";
+          const isResource = node.type === "resource";
+
+          const nodeColor = isResource 
+            ? "oklch(0.7294 0.111 66.71)" 
+            : nodeStatesRef.current[node.id] === "loading" 
+            ? '#ffd700' : hasChildren(node.id) 
+            ? "oklch(0.6941 0.1233 238.24)" 
+            : "oklch(0.4176 0.0592 238.24)";
 
           if (isResource) {
             const rectSize = 12 + node.group * 2;
@@ -383,13 +384,19 @@ export default function AppView() {
                 ctx.imageSmoothingEnabled = true;
                 ctx.imageSmoothingQuality = 'high';
                 ctx.filter = 'hue-rotate(185deg) saturate(1.15)';
-                ctx.drawImage(
+
+                try {
+                  ctx.drawImage(
                   cachedImage,
                   rectX + iconPadding,
                   rectY + iconPadding,
                   iconSize,
                   iconSize,
-                );
+                  );
+                 } catch {
+                  ;;
+                 }
+                
                 ctx.restore();
               } else {
                 ctx.fillStyle = '#ffffff';
@@ -421,10 +428,6 @@ export default function AppView() {
             ctx.fillStyle = nodeColor;
             ctx.fill();
           }
-          ctx.beginPath();
-          ctx.arc(node.x, node.y, 3 + node.group, 0, 2 * Math.PI);
-          ctx.fillStyle = nodeColor;
-          ctx.fill();
 
           const showLabel = node.type !== 'resource' && (node.group <= 1 || globalScale > 1.5);
 
@@ -456,9 +459,11 @@ export default function AppView() {
           }
 
           ctx.beginPath();
-          ctx.arc(node.x, node.y, 5 + node.group, 0, 2 * Math.PI);
+          ctx.arc(node.x, node.y, 2, 0, 2 * Math.PI);
           ctx.fill();
         }}
+        d3AlphaDecay={0.02}     // default 0.0228, lower = longer simulation
+        d3VelocityDecay={0.2}   // default 0.4, lower = nodes travel further
         linkDirectionalArrowLength={0}
         linkDirectionalArrowRelPos={1}
         linkColor={() => 'oklch(0.7176 0.0691 57.72)'}
