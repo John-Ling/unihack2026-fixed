@@ -3,11 +3,13 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { GraphData, Link, Node, ResourceNode, TopicNode } from '@/features/graph/types';
 import { loadGraph, upsertGraph } from '@/features/graph/supabase-graph-service';
+
 import dynamic from 'next/dynamic';
 import { Button } from '@/components/ui/button';
 import { useSession } from '@/hooks/useSession';
 import styles from './app.module.css';
 import { cn } from '@/utils/tailwind';
+import { toast } from 'sonner';
 
 const HIGH_LEVEL_CATEGORIES = [
   'Computer Science',
@@ -58,41 +60,6 @@ function isResourceNode(node: Node): node is ResourceNode {
   return node.type === 'resource';
 }
 
-function normaliseNode(node: Partial<Node> & { id: number; name: string; group: number }): Node {
-  const depth = typeof node.depth === 'number' ? node.depth : node.group ?? 0;
-
-  if (node.type === 'resource' && typeof node.url === 'string') {
-    return {
-      id: node.id,
-      name: node.name,
-      group: node.group,
-      depth,
-      type: 'resource',
-      url: node.url,
-      source: node.source ?? 'web',
-      favicon: node.favicon,
-      snippet: node.snippet,
-    };
-  }
-
-  return {
-    id: node.id,
-    name: node.name,
-    group: node.group,
-    depth,
-    type: 'topic',
-  };
-}
-
-function normaliseGraphData(graphData: GraphData): GraphData {
-  return {
-    nodes: graphData.nodes.map((node) =>
-      normaliseNode(node as Partial<Node> & { id: number; name: string; group: number }),
-    ),
-    links: graphData.links,
-  };
-}
-
 export default function AppView() {
   const { user } = useSession();
 
@@ -129,8 +96,6 @@ export default function AppView() {
     async function loadData() {
       const graph = await loadGraph(user!.id);
       if (graph && graph.graph_data) {
-        const normalisedGraph = normaliseGraphData(graph.graph_data);
-        setData(normalisedGraph);
         setData(graph.graph_data);
 
         // Initialize node states for loaded nodes
@@ -141,8 +106,8 @@ export default function AppView() {
         nodeStatesRef.current = loadedStates;
 
         // Sync nextId so new nodes don't collide with existing ones
-        const maxId = normalisedGraph.nodes.length > 0
-          ? Math.max(...normalisedGraph.nodes.map((n: Node) => n.id))
+        const maxId = data.nodes.length > 0
+          ? Math.max(...data.nodes.map((n: Node) => n.id))
           : INITIAL_NODES.length - 1;
         nextId.current = maxId + 1;
         setGraphDataLoaded(true);
@@ -209,6 +174,7 @@ export default function AppView() {
       nodeStatesRef.current[node.id] = 'loading';
       setCurrentDepth(node.depth);
 
+      let result: ExpansionResponse | null = null;
       try {
         // Refactor to tanstack
         const response = await fetch("/api/subcategories", {
@@ -224,8 +190,12 @@ export default function AppView() {
           return;
         }
 
-        const result: ExpansionResponse = await response.json();
+        result = await response.json();
+      } catch {
+        toast("Slow Down!!! You've been rate limited")
+      }
 
+      if (result) {
         setData((prev) => {
           const existingTopicNames = new Set(
             prev.nodes
@@ -293,12 +263,9 @@ export default function AppView() {
             links: [...prev.links, ...newLinks],
           };
         });
-      } catch (error) {
-        console.error("Error generating subcategories:", error);
-      } finally {
-        setLoading(null);
-        nodeStatesRef.current[node.id] = 'idle';
       }
+      setLoading(null);
+      nodeStatesRef.current[node.id] = 'idle';
     },
     [data.links, loading],
   );
@@ -350,10 +317,10 @@ export default function AppView() {
             ctx.fillStyle = nodeColor;
             ctx.fill();
           } else {
-            const rectSize = 12 + node.group * 2;
-            const rectX = node.x - rectSize / 2;
-            const rectY = node.y - rectSize / 2;
-            const radius = rectSize / 2;
+            const radius = 3;
+            const rectSize = radius * 2;  // = 12, so image fills the circle
+            const rectX = node.x - radius;
+            const rectY = node.y - radius;
             const iconPadding = Math.max(2, rectSize * 0.12);
             const iconSize = rectSize - iconPadding * 2;
 
@@ -367,9 +334,9 @@ export default function AppView() {
               ctx.fillStyle = '#ffffff';
               ctx.beginPath();
               ctx.arc(
-                rectX + iconPadding + iconSize / 2,
-                rectY + iconPadding + iconSize / 2,
-                iconSize / 2,
+                rectX,
+                rectY,
+                iconSize,
                 0,
                 2 * Math.PI,
               );
@@ -393,25 +360,17 @@ export default function AppView() {
               if (cachedImage && cachedImage.complete) {
                 ctx.save();
                 ctx.beginPath();
-                ctx.arc(
-                  rectX + iconPadding + iconSize / 2,
-                  rectY + iconPadding + iconSize / 2,
-                  iconSize / 2,
-                  0,
-                  2 * Math.PI,
-                );
-                ctx.clip();
                 ctx.imageSmoothingEnabled = true;
                 ctx.imageSmoothingQuality = 'high';
-                ctx.filter = 'hue-rotate(185deg) saturate(1.15)';
+                // ctx.filter = 'hue-rotate(185deg) saturate(1.15)';
 
                 try {
                   ctx.drawImage(
                     cachedImage,
-                    rectX + iconPadding,
-                    rectY + iconPadding,
-                    iconSize,
-                    iconSize,
+                    rectX,
+                    rectY,
+                    rectSize,
+                    rectSize
                   );
                 } catch {
                   ;;
@@ -435,7 +394,7 @@ export default function AppView() {
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillStyle = 'oklch(0.7735 0.0962 57.72)';
-            ctx.fillText(label, node.x, node.y - 10);
+            ctx.fillText(label, node.x, node.y - 5);
           }
 
           node.__bckgDimensions = bckgDimensions;
