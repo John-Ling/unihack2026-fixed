@@ -17,7 +17,11 @@ import { Button } from "@/components/ui/button";
 import { useSession } from "@/hooks/useSession";
 import styles from "./app.module.css";
 import { cn } from "@/utils/tailwind";
-import InterestSelection, { InterestId } from "./InterestSelection.tsx";
+import InterestSelection, {
+  InterestId,
+  hasUserSelectedInterests,
+  getUserInterests,
+} from "./InterestSelection";
 
 const HIGH_LEVEL_CATEGORIES = [
   "Computer Science",
@@ -216,23 +220,23 @@ export default function AppView() {
       nodes: data.nodes.map((node) =>
         node.type === "resource"
           ? {
-            id: node.id,
-            name: node.name,
-            group: node.group,
-            depth: node.depth,
-            type: node.type,
-            url: node.url,
-            source: node.source,
-            favicon: node.favicon,
-            snippet: node.snippet,
-          }
+              id: node.id,
+              name: node.name,
+              group: node.group,
+              depth: node.depth,
+              type: node.type,
+              url: node.url,
+              source: node.source,
+              favicon: node.favicon,
+              snippet: node.snippet,
+            }
           : {
-            id: node.id,
-            name: node.name,
-            group: node.group,
-            depth: node.depth,
-            type: node.type,
-          },
+              id: node.id,
+              name: node.name,
+              group: node.group,
+              depth: node.depth,
+              type: node.type,
+            },
       ),
       links: data.links.map((link) => ({
         source: (link.source as Node)?.id ?? link.source,
@@ -388,8 +392,17 @@ export default function AppView() {
     return;
   }
 
-  if (!interestsSelected) {
-    return <InterestSelection onComplete={handleInterestsSelected} />;
+  const userHasInterests = hasUserSelectedInterests(user);
+  const existingInterests = getUserInterests(user);
+
+  if (!interestsSelected && !userHasInterests) {
+    return (
+      <InterestSelection user={user} onComplete={handleInterestsSelected} />
+    );
+  }
+
+  if (!interestsSelected && userHasInterests) {
+    handleInterestsSelected(existingInterests);
   }
 
   console.log(user.id);
@@ -495,7 +508,7 @@ export default function AppView() {
                     iconSize,
                     iconSize,
                   );
-                } catch { }
+                } catch {}
 
                 ctx.restore();
               }

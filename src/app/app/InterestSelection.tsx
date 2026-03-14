@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { createClient } from "@/supabase/client";
+import type { User } from "@supabase/supabase-js";
 import {
   Code2,
   UtensilsCrossed,
@@ -43,14 +45,30 @@ const INTERESTS = [
 
 export type InterestId = (typeof INTERESTS)[number]["id"];
 
+export function hasUserSelectedInterests(user: User | undefined): boolean {
+  if (!user) return false;
+  const interests = user.user_metadata?.interests;
+  return Array.isArray(interests) && interests.length > 0;
+}
+
+export function getUserInterests(user: User | undefined): InterestId[] {
+  if (!user?.user_metadata?.interests) return [];
+  return user.user_metadata.interests as InterestId[];
+}
+
 interface InterestSelectionProps {
+  user: User;
   onComplete: (selectedInterests: InterestId[]) => void;
 }
 
 export default function InterestSelection({
+  user,
   onComplete,
 }: InterestSelectionProps) {
-  const [selected, setSelected] = useState<Set<InterestId>>(new Set());
+  const [selected, setSelected] = useState<Set<InterestId>>(
+    new Set(getUserInterests(user)),
+  );
+  const [isSaving, setIsSaving] = useState(false);
 
   const toggle = (id: InterestId) => {
     setSelected((prev) => {
@@ -64,9 +82,32 @@ export default function InterestSelection({
     });
   };
 
-  const handleContinue = () => {
-    if (selected.size > 0) {
-      onComplete(Array.from(selected));
+  const handleContinue = async () => {
+    if (selected.size === 0) return;
+
+    setIsSaving(true);
+    try {
+      const supabase = createClient();
+      const interests = Array.from(selected);
+
+      const { error } = await supabase.auth.updateUser({
+        data: { interests },
+      });
+
+      if (error) {
+        console.error("Failed to save interests:", error);
+        return;
+      }
+
+      console.log(
+        "[LOG] Interest selection complete, saved to user metadata:",
+        interests,
+      );
+      onComplete(interests);
+    } catch (err) {
+      console.error("Error saving interests:", err);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -123,11 +164,11 @@ export default function InterestSelection({
         <div className="mt-8 flex justify-center">
           <Button
             onClick={handleContinue}
-            disabled={selected.size === 0}
+            disabled={selected.size === 0 || isSaving}
             size="lg"
             className="px-8"
           >
-            Continue ({selected.size} selected)
+            {isSaving ? "Saving..." : `Continue (${selected.size} selected)`}
           </Button>
         </div>
       </div>
