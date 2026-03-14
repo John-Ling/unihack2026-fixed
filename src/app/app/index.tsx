@@ -57,6 +57,7 @@ export default function AppView() {
 
   const [graphDataLoaded, setGraphDataLoaded] = useState<boolean>(false);
   const [loading, setLoading] = useState<number | null>(null);
+  const [errorNodes, setErrorNodes] = useState<number[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const graphRef = useRef<any>(null);
   const nextId = useRef(INITIAL_NODES.length);
@@ -136,12 +137,20 @@ export default function AppView() {
         if (!response.ok) {
           const errorText = await response.text();
           console.error("API error:", response.status, errorText);
+          setErrorNodes((prev) => [...prev, node.id]);
+          setTimeout(() => {
+            setErrorNodes((prev) => prev.filter((id) => id !== node.id));
+          }, 3000);
           setLoading(null);
           return;
         }
 
         const result = await response.json();
-        if (result.subcategories && Array.isArray(result.subcategories)) {
+        if (
+          result.subcategories &&
+          Array.isArray(result.subcategories) &&
+          result.subcategories.length > 0
+        ) {
           const subcategories = result.subcategories.slice(0, 7);
 
           setData((prev) => {
@@ -162,9 +171,18 @@ export default function AppView() {
               links: [...prev.links, ...newLinks],
             };
           });
+        } else {
+          setErrorNodes((prev) => [...prev, node.id]);
+          setTimeout(() => {
+            setErrorNodes((prev) => prev.filter((id) => id !== node.id));
+          }, 3000);
         }
       } catch (error) {
         console.error("Error generating subcategories:", error);
+        setErrorNodes((prev) => [...prev, node.id]);
+        setTimeout(() => {
+          setErrorNodes((prev) => prev.filter((id) => id !== node.id));
+        }, 3000);
       } finally {
         setLoading(null);
       }
@@ -293,7 +311,7 @@ export default function AppView() {
 
           const nodeColor =
             loading === node.id
-              ? "#ffd700"
+              ? "#ef4444"
               : hasChildren(node.id)
                 ? "oklch(0.6941 0.1233 238.24)"
                 : "oklch(0.5412 0.0789 238.24)";
@@ -302,6 +320,34 @@ export default function AppView() {
           ctx.arc(node.x, node.y, 5 + node.group, 0, 2 * Math.PI);
           ctx.fillStyle = nodeColor;
           ctx.fill();
+
+          if (loading === node.id) {
+            const ringRadius = 5 + node.group + 2;
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, ringRadius, 0, 2 * Math.PI);
+            ctx.strokeStyle = "#ef4444";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            const time = Date.now() / 200;
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, ringRadius, time, time + Math.PI);
+            ctx.strokeStyle = "#ef4444";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          }
+
+          if (errorNodes.includes(node.id)) {
+            const blink = Math.sin(Date.now() / 100) > 0;
+            if (blink) {
+              const ringRadius = 5 + node.group + 2;
+              ctx.beginPath();
+              ctx.arc(node.x, node.y, ringRadius, 0, 2 * Math.PI);
+              ctx.strokeStyle = "#ef4444";
+              ctx.lineWidth = 3;
+              ctx.stroke();
+            }
+          }
 
           const showLabel = node.group <= 1 || globalScale > 1.5;
 
@@ -331,38 +377,6 @@ export default function AppView() {
         linkDirectionalArrowRelPos={1}
         linkColor={() => "oklch(0.7176 0.0691 57.72)"}
       />
-      {loading !== null && (
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "rgba(0, 0, 0, 0.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexDirection: "column",
-            gap: "15px",
-          }}
-        >
-          <div
-            style={{
-              width: "40px",
-              height: "40px",
-              border: "4px solid rgba(255,255,255,0.3)",
-              borderTop: "4px solid #fff",
-              borderRadius: "50%",
-              animation: "spin 1s linear infinite",
-            }}
-          />
-          <span style={{ color: "#fff", fontSize: "16px" }}>
-            Generating subcategories...
-          </span>
-          <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
-        </div>
-      )}
     </div>
   );
 }
