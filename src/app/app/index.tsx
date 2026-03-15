@@ -23,9 +23,9 @@ import InterestSelection, {
   InterestId,
   getUserInterests,
 } from "./InterestSelection";
-import { toast } from 'sonner';
-import MetricPanel from '@/features/graph/components/metric-panel';
-import Navbar from '@/components/navbar';
+import { toast } from "sonner";
+import MetricPanel from "@/features/graph/components/metric-panel";
+import Navbar from "@/components/navbar";
 import { useSound } from "@/hooks/useSound";
 
 const HIGH_LEVEL_CATEGORIES = [
@@ -89,6 +89,19 @@ function getLinkNodeId(node: number | Node) {
 
 function isResourceNode(node: Node): node is ResourceNode {
   return node.type === "resource";
+}
+
+function sanitizeGraphData(graphData: GraphData): GraphData {
+  const nodeIds = new Set(graphData.nodes.map((node) => node.id));
+
+  return {
+    nodes: graphData.nodes,
+    links: graphData.links.filter((link) => {
+      const sourceId = getLinkNodeId(link.source);
+      const targetId = getLinkNodeId(link.target);
+      return nodeIds.has(sourceId) && nodeIds.has(targetId);
+    }),
+  };
 }
 
 export default function AppView() {
@@ -155,22 +168,24 @@ export default function AppView() {
     async function loadData() {
       const graph = await loadGraph(user!.id);
       if (graph) {
-        setData(graph.graph_data);
+        const safeGraphData = sanitizeGraphData(graph.graph_data);
+
+        setData(safeGraphData);
         setCurrentDepth(graph.current_depth);
         setNodesExplored(graph.nodes_explored);
         setDeepestLevel(graph.deepest_level);
 
         // Initialize node states for loaded nodes
         const loadedStates: Record<number, "idle" | "loading"> = {};
-        graph.graph_data.nodes.forEach((node) => {
+        safeGraphData.nodes.forEach((node) => {
           loadedStates[node.id] = "idle";
         });
         nodeStatesRef.current = loadedStates;
 
         // Sync nextId so new nodes don't collide with existing ones
         const maxId =
-          data.nodes.length > 0
-            ? Math.max(...data.nodes.map((n: Node) => n.id))
+          graph.graph_data.nodes.length > 0
+            ? Math.max(...graph.graph_data.nodes.map((n: Node) => n.id))
             : getInitialNodes().length - 1;
         nextId.current = maxId + 1;
         setGraphDataLoaded(true);
@@ -184,11 +199,17 @@ export default function AppView() {
 
   async function handleGraphSave(
     graphData: GraphData,
-    sessionInfo: { currentDepth: number; nodesExplored: number; deepestLevel: number }
+    sessionInfo: {
+      currentDepth: number;
+      nodesExplored: number;
+      deepestLevel: number;
+    },
   ) {
+    const safeGraphData = sanitizeGraphData(graphData);
+
     // Strip position information
     const sanitisedData = {
-      nodes: graphData.nodes.map((node) =>
+      nodes: safeGraphData.nodes.map((node) =>
         node.type === "resource"
           ? {
             id: node.id,
@@ -209,19 +230,18 @@ export default function AppView() {
             type: node.type,
           },
       ),
-      links: graphData.links.map((link) => ({
+      links: safeGraphData.links.map((link) => ({
         source: (link.source as Node)?.id ?? link.source,
         target: (link.target as Node)?.id ?? link.target,
       })),
     };
 
     if (user) {
-      await upsertGraph(user.id, sanitisedData,
-        {
-          currentDepth: sessionInfo.currentDepth,
-          nodesExplored: sessionInfo.nodesExplored,
-          deepestLevel: sessionInfo.deepestLevel
-        });
+      await upsertGraph(user.id, sanitisedData, {
+        currentDepth: sessionInfo.currentDepth,
+        nodesExplored: sessionInfo.nodesExplored,
+        deepestLevel: sessionInfo.deepestLevel,
+      });
     }
   }
 
@@ -243,7 +263,7 @@ export default function AppView() {
 
       graphRef.current?.centerAt(node.x, node.y, 500);
 
-      nodeStatesRef.current[node.id] = 'loading';
+      nodeStatesRef.current[node.id] = "loading";
 
       const newDepth = node.depth;
       let newDeepest = deepestLevel;
@@ -257,19 +277,100 @@ export default function AppView() {
       setDeepestLevel(newDeepest);
       setNodesExplored(newExplored);
 
+      // Walk upward from the clicked node and keep only a small amount of context.
+      const SEARCH_DEPTH = 4;
+      const nodesById = new Map(data.nodes.map((n) => [n.id, n]));
+      const path: string[] = [node.name];
+      const ancestorPath: string[] = [];
+      let currentId = node.id;
+      let immediateParentId: number | undefined;
+
+      while (path.length < SEARCH_DEPTH) {
+        const parentLink = data.links.find(
+          (link) => getLinkNodeId(link.target) === currentId,
+        );
+
+        if (parentLink === undefined) {
+          break;
+        }
+
+        const parentId = getLinkNodeId(parentLink.source);
+        const parentNode = nodesById.get(parentId);
+
+        if (parentNode === undefined) {
+          break;
+        }
+
+        if (immediateParentId === undefined) {
+          immediateParentId = parentId;
+        }
+
+        ancestorPath.push(parentNode.name);
+        path.push(parentNode.name);
+        currentId = parentId;
+      }
+
+      const searchQuery = path.join(", ");
+      const orderedAncestorPath = [...ancestorPath].reverse();
+      const rootTopic = orderedAncestorPath[0] ?? node.name;
+      const siblingTopics =
+        immediateParentId === undefined
+          ? []
+          : data.links
+              .filter((link) => getLinkNodeId(link.source) === immediateParentId)
+              .map((link) => nodesById.get(getLinkNodeId(link.target)))
+              .filter(
+                (linkedNode): linkedNode is Node =>
+                  linkedNode !== undefined &&
+                  linkedNode.id !== node.id &&
+                  linkedNode.type !== "resource",
+              )
+              .map((linkedNode) => linkedNode.name.trim())
+              .filter(
+                (name, index, values) =>
+                  Boolean(name) &&
+                  values.findIndex(
+                    (value) => value.toLowerCase() === name.toLowerCase(),
+                  ) === index,
+              );
+      const existingTopicNames = data.nodes
+        .filter(
+          (existingNode) =>
+            existingNode.id !== node.id && existingNode.type !== "resource",
+        )
+        .map((existingNode) => existingNode.name.trim())
+        .filter(
+          (name, index, values) =>
+            Boolean(name) &&
+            values.findIndex(
+              (value) => value.toLowerCase() === name.toLowerCase(),
+            ) === index,
+        )
+        .slice(-80);
+
       let result: ExpansionResponse | null = null;
       // Refactor to tanstack
       const response = await fetch("/api/subcategories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ category: node.name }),
+        body: JSON.stringify({
+          category: node.name,
+          searchQuery,
+          llmContext: {
+            currentDepth: node.depth,
+            ancestorPath: orderedAncestorPath,
+            rootTopic,
+            siblingTopics,
+            existingTopicNames,
+          },
+        }),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
         console.error("API error:", response.status, errorText);
-        toast("Slow Down!!! You've been rate limited")
-        nodeStatesRef.current[node.id] = 'idle';
+        toast("Slow Down!!! You've been rate limited");
+        nodeStatesRef.current[node.id] = "idle";
         return;
       }
 
@@ -346,14 +447,17 @@ export default function AppView() {
 
           fan();
 
-          handleGraphSave({
-            nodes: [...prev.nodes, ...newNodes],
-            links: [...prev.links, ...newLinks],
-          }, {
-            currentDepth: newDepth,
-            nodesExplored: newExplored,
-            deepestLevel: newDeepest
-          });
+          handleGraphSave(
+            {
+              nodes: [...prev.nodes, ...newNodes],
+              links: [...prev.links, ...newLinks],
+            },
+            {
+              currentDepth: newDepth,
+              nodesExplored: newExplored,
+              deepestLevel: newDeepest,
+            },
+          );
           return {
             nodes: [...prev.nodes, ...newNodes],
             links: [...prev.links, ...newLinks],
@@ -361,9 +465,9 @@ export default function AppView() {
         });
       }
 
-      nodeStatesRef.current[node.id] = 'idle';
+      nodeStatesRef.current[node.id] = "idle";
     },
-    [data.links],
+    [data.links, data.nodes],
   );
 
   const handleSearch = useCallback(() => {
@@ -444,7 +548,7 @@ export default function AppView() {
 
   function hasChildren(nodeId: number) {
     return data.links.some((link) => getLinkNodeId(link.source) === nodeId);
-  };
+  }
 
   const handleInterestsSelected = (selected: InterestId[]) => {
     setSelectedInterests(selected);
@@ -478,16 +582,20 @@ export default function AppView() {
   }
 
   return (
-    <div className={cn("min-h-screen w-full relative flex flex-col background-pattern")}>
+    <div
+      className={cn(
+        "min-h-screen w-full relative flex flex-col background-pattern",
+      )}
+    >
       <div
         className={cn(
-          "absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 bg-background/80 backdrop-blur-sm rounded-full border border-border px-2 py-1.5 shadow-sm transition-colors",
+          "absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 bg-background/80 backdrop-blur-sm border border-border px-2 py-1.5 shadow-sm transition-colors",
           searchError && "border-red-500 border-2",
         )}
       >
         <Input
           type="text"
-          placeholder="Search or add nodes..."
+          placeholder="Search or add nodes"
           value={searchQuery}
           onChange={(e) => {
             setSearchQuery(e.target.value);
@@ -499,7 +607,7 @@ export default function AppView() {
         <Button
           variant="ghost"
           size="icon"
-          className="rounded-full h-8 w-8"
+          className="h-8 w-8"
           onClick={handleAddNode}
         >
           <Plus className="h-4 w-4" />
@@ -558,7 +666,7 @@ export default function AppView() {
           } else if (isResource) {
             nodeColor = "oklch(0.7294 0.111 66.71)";
           } else if (hasChildren(node.id)) {
-            nodeColor = "oklch(0.6941 0.1233 238.24)"
+            nodeColor = "oklch(0.6941 0.1233 238.24)";
           }
 
           if (!isResource) {
@@ -572,37 +680,37 @@ export default function AppView() {
             const rectSize = radius * 2;
             const rectX = node.x - radius;
             const rectY = node.y - radius;
+            const faviconSrc = node.url
+              ? `/api/favicon?${new URLSearchParams({
+                url: node.url,
+                ...(node.favicon ? { icon: node.favicon } : {}),
+              }).toString()}`
+              : node.favicon;
 
             ctx.beginPath();
             ctx.fillStyle = nodeColor;
             ctx.fill();
 
-            if (!node.favicon) {
+            if (!faviconSrc) {
               // Create placeholder
               ctx.fillStyle = "#ffffff";
               ctx.beginPath();
-              ctx.arc(
-                rectX,
-                rectY,
-                radius,
-                0,
-                2 * Math.PI,
-              );
+              ctx.arc(rectX, rectY, radius, 0, 2 * Math.PI);
               ctx.fill();
             } else {
               // Favicon is present store in cache
-              let cachedImage = imageCacheRef.current.get(node.favicon);
+              let cachedImage = imageCacheRef.current.get(faviconSrc);
 
               if (cachedImage === undefined) {
                 cachedImage = new Image();
                 cachedImage.crossOrigin = "anonymous";
                 cachedImage.onload = () => graphRef.current?.refresh?.();
                 cachedImage.onerror = () => {
-                  imageCacheRef.current.set(node.favicon, null);
+                  imageCacheRef.current.set(faviconSrc, null);
                   graphRef.current?.refresh?.();
                 };
-                cachedImage.src = node.favicon;
-                imageCacheRef.current.set(node.favicon, cachedImage);
+                cachedImage.src = faviconSrc;
+                imageCacheRef.current.set(faviconSrc, cachedImage);
               }
 
               if (cachedImage && cachedImage.complete) {
@@ -611,17 +719,11 @@ export default function AppView() {
                 ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI);
                 ctx.clip();
                 ctx.imageSmoothingEnabled = true;
-                ctx.imageSmoothingQuality = 'high';
+                ctx.imageSmoothingQuality = "high";
                 // ctx.filter = 'hue-rotate(185deg) saturate(1.15)';
 
                 try {
-                  ctx.drawImage(
-                    cachedImage,
-                    rectX,
-                    rectY,
-                    rectSize,
-                    rectSize
-                  );
+                  ctx.drawImage(cachedImage, rectX, rectY, rectSize, rectSize);
                 } catch { }
 
                 ctx.restore();
@@ -629,9 +731,18 @@ export default function AppView() {
             }
           }
           // Render labels
-          const showLabel = node.type !== "resource" && globalScale >= 2.5;
+          const showLabel = globalScale >= 2.5;
 
           if (showLabel) {
+            let labelContent = label;
+            if (node.type === "resource") {
+                // Truncate label
+                labelContent = label.substring(0, 20)
+                if (label.length > 21) {
+                  labelContent += "...";
+                }
+            }
+
             ctx.fillStyle = "rgba(255, 255, 255, 0)";
             ctx.fillStyle = "rgba(255, 255, 255, 0)";
             ctx.fillRect(
@@ -644,7 +755,7 @@ export default function AppView() {
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillStyle = 'oklch(0.7735 0.0962 57.72)';
-            ctx.fillText(label, node.x, node.y - 5);
+            ctx.fillText(labelContent, node.x, node.y - 5);
           }
 
           node.__bckgDimensions = bckgDimensions;
@@ -665,7 +776,7 @@ export default function AppView() {
           ctx.fill();
         }}
         d3AlphaDecay={0.02} // default 0.0228, lower = longer simulation
-        d3VelocityDecay={0.6} // default 0.4, lower = nodes travel further
+        d3VelocityDecay={0.4} // default 0.4, lower = nodes travel further
         linkDirectionalArrowLength={0}
         linkDirectionalArrowRelPos={1}
         linkColor={() => "oklch(0.7176 0.0691 57.72)"}

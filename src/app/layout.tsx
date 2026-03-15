@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Geist, Barlow_Condensed, Cascadia_Mono } from 'next/font/google'
+import { Geist, Barlow_Condensed, JetBrains_Mono } from 'next/font/google'
 import { ThemeProvider } from 'next-themes'
 import NextTopLoader from 'nextjs-toploader'
 import { Analytics } from '@vercel/analytics/react'
@@ -14,7 +14,7 @@ const defaultUrl = process.env.VERCEL_URL
 
 export const metadata: Metadata = {
   metadataBase: new URL(defaultUrl),
-  title: 'Next.js and Supabase Starter Kit',
+  title: 'GRAPH SEARCH',
   description: 'The fastest way to build apps with Next.js and Supabase',
 }
 
@@ -31,7 +31,7 @@ const barlow = Barlow_Condensed({
   subsets: ['latin'],
 });
 
-const jet = Cascadia_Mono({
+const jet = JetBrains_Mono({
   variable: "--font-jet",
   display: 'swap',
   subsets: ['latin'],
