@@ -82,7 +82,7 @@ export default function LandingPage() {
 
   return (
     <main
-      className="h-[300vh] w-full relative background-pattern bg-background"
+      className="h-[100vh] w-full relative background-pattern bg-background"
     >
       {/* Canvas */}
       <canvas
