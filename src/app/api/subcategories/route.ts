@@ -39,10 +39,17 @@ function parseSubcategories(result: string) {
   return subcategories.slice(0, 3).map((s: string) => s.trim()).filter(Boolean);
 }
 
-function getFaviconUrl(url: string) {
+function getFaviconUrl(url: string, iconUrl?: string) {
   try {
-    const hostname = new URL(url).hostname;
-    return `https://www.google.com/s2/favicons?domain=${hostname}&sz=512`;
+    const params = new URLSearchParams({
+      url,
+    });
+
+    if (iconUrl) {
+      params.set('icon', iconUrl);
+    }
+
+    return `/api/favicon?${params.toString()}`;
   } catch {
     return undefined;
   }
@@ -55,10 +62,6 @@ function normaliseResource(
   const profile =
     result.profile && typeof result.profile === 'object'
       ? result.profile as Record<string, unknown>
-      : undefined;
-  const thumbnail =
-    result.thumbnail && typeof result.thumbnail === 'object'
-      ? result.thumbnail as Record<string, unknown>
       : undefined;
   const metaUrl =
     result.meta_url && typeof result.meta_url === 'object'
@@ -83,11 +86,10 @@ function normaliseResource(
   }
 
   const favicon =
-    typeof thumbnail?.src === 'string'
-      ? thumbnail.src
-      : typeof metaUrl?.favicon === 'string'
-        ? metaUrl.favicon
-        : getFaviconUrl(url);
+    getFaviconUrl(
+      url,
+      typeof metaUrl?.favicon === 'string' ? metaUrl.favicon : undefined,
+    );
 
   const snippet =
     typeof result.description === 'string'

@@ -489,12 +489,18 @@ export default function AppView() {
             const rectSize = radius * 2;
             const rectX = node.x - radius;
             const rectY = node.y - radius;
+            const faviconSrc = node.url
+              ? `/api/favicon?${new URLSearchParams({
+                url: node.url,
+                ...(node.favicon ? { icon: node.favicon } : {}),
+              }).toString()}`
+              : node.favicon;
 
             ctx.beginPath();
             ctx.fillStyle = nodeColor;
             ctx.fill();
 
-            if (!node.favicon) {
+            if (!faviconSrc) {
               // Create placeholder
               ctx.fillStyle = "#ffffff";
               ctx.beginPath();
@@ -508,18 +514,18 @@ export default function AppView() {
               ctx.fill();
             } else {
               // Favicon is present store in cache
-              let cachedImage = imageCacheRef.current.get(node.favicon);
+              let cachedImage = imageCacheRef.current.get(faviconSrc);
 
               if (cachedImage === undefined) {
                 cachedImage = new Image();
                 cachedImage.crossOrigin = "anonymous";
                 cachedImage.onload = () => graphRef.current?.refresh?.();
                 cachedImage.onerror = () => {
-                  imageCacheRef.current.set(node.favicon, null);
+                  imageCacheRef.current.set(faviconSrc, null);
                   graphRef.current?.refresh?.();
                 };
-                cachedImage.src = node.favicon;
-                imageCacheRef.current.set(node.favicon, cachedImage);
+                cachedImage.src = faviconSrc;
+                imageCacheRef.current.set(faviconSrc, cachedImage);
               }
 
               if (cachedImage && cachedImage.complete) {
