@@ -17,27 +17,36 @@ export type Database = {
       graphs: {
         Row: {
           created_at: string
+          current_depth: number | null
+          deepest_level: number | null
           graph_data: Json | null
-          id: number
+          id: string
+          nodes_explored: number | null
           user_id: string | null
         }
         Insert: {
           created_at?: string
+          current_depth?: number | null
+          deepest_level?: number | null
           graph_data?: Json | null
-          id?: number
+          id?: string
+          nodes_explored?: number | null
           user_id?: string | null
         }
         Update: {
           created_at?: string
+          current_depth?: number | null
+          deepest_level?: number | null
           graph_data?: Json | null
-          id?: number
+          id?: string
+          nodes_explored?: number | null
           user_id?: string | null
         }
         Relationships: [
           {
             foreignKeyName: "graphs_user_id_fkey"
             columns: ["user_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },

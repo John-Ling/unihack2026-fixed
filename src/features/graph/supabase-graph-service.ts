@@ -2,14 +2,21 @@
  * Functions for interacting with graph data stored in Supabase
  */
 
-import { GraphData, Graph } from "@/features/graph/types";
+import { GraphData, Graph, SessionInfo } from "@/features/graph/types";
 import { createClient } from "@/supabase/client";
 
-export async function upsertGraph(userId: string, graphData: GraphData) {
+export async function upsertGraph(userId: string, graphData: GraphData, sessionInfo: SessionInfo ) {
+  const { currentDepth, nodesExplored, deepestLevel } = sessionInfo;
   const supabase = createClient();
   const { data, error } = await supabase
     .from("graphs")
-    .upsert({ user_id: userId, graph_data: graphData }, { onConflict: "user_id" })
+    .upsert({ 
+      user_id: userId, 
+      graph_data: graphData, 
+      current_depth: currentDepth, 
+      nodes_explored: nodesExplored, 
+      deepest_level: deepestLevel 
+    }, { onConflict: "user_id" })
     .select();
 
   if (!error) {
@@ -30,7 +37,7 @@ export async function loadGraph(userId: string) {
   console.log("Selecting using ", userId)
   const { data, error } = await supabase
     .from("graphs")
-    .select("graph_data")
+    .select("graph_data, current_depth, nodes_explored, deepest_level")
     .eq("user_id", userId)
     .limit(1)
 
@@ -39,8 +46,7 @@ export async function loadGraph(userId: string) {
     throw error;
   } else {
     console.log(data[0])
-    return data[0] as unknown as Graph;
+    return data[0] as unknown as Graph
   }
-
 }
 

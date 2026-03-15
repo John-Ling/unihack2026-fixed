@@ -117,6 +117,7 @@ export default function AppView() {
   const [graphDataLoaded, setGraphDataLoaded] = useState<boolean>(false);
   const [currentDepth, setCurrentDepth] = useState<number>(0);
   const [nodesExplored, setNodesExplored] = useState<number>(0);
+  const [deepestLevel, setDeepestLevel] = useState<number>(0);
 
   const graphRef = useRef<any>(null);
   const nextId = useRef(getInitialNodes().length);
@@ -142,8 +143,11 @@ export default function AppView() {
     console.log("[LOG] Loading data");
     async function loadData() {
       const graph = await loadGraph(user!.id);
-      if (graph && graph.graph_data) {
+      if (graph) {
         setData(graph.graph_data);
+        setCurrentDepth(graph.current_depth);
+        setNodesExplored(graph.nodes_explored);
+        setDeepestLevel(graph.deepest_level);
 
         // Initialize node states for loaded nodes
         const loadedStates: Record<number, "idle" | "loading"> = {};
@@ -167,10 +171,13 @@ export default function AppView() {
     }
   }, [user]);
 
-  async function handleGraphSave() {
+  async function handleGraphSave(
+    graphData: GraphData,
+    sessionInfo: { currentDepth: number; nodesExplored: number; deepestLevel: number }
+  ) {
     // Strip position information
     const sanitisedData = {
-      nodes: data.nodes.map((node) =>
+      nodes: graphData.nodes.map((node) =>
         node.type === "resource"
           ? {
             id: node.id,
@@ -191,14 +198,19 @@ export default function AppView() {
             type: node.type,
           },
       ),
-      links: data.links.map((link) => ({
+      links: graphData.links.map((link) => ({
         source: (link.source as Node)?.id ?? link.source,
         target: (link.target as Node)?.id ?? link.target,
       })),
     };
 
     if (user) {
-      await upsertGraph(user.id, sanitisedData);
+      await upsertGraph(user.id, sanitisedData,
+        {
+          currentDepth: sessionInfo.currentDepth,
+          nodesExplored: sessionInfo.nodesExplored,
+          deepestLevel: sessionInfo.deepestLevel
+        });
     }
   }
 
@@ -221,8 +233,18 @@ export default function AppView() {
       graphRef.current?.centerAt(node.x, node.y, 500);
 
       nodeStatesRef.current[node.id] = 'loading';
-      setCurrentDepth(node.depth);
-      setNodesExplored(explored => explored + 1);
+
+      const newDepth = node.depth;
+      let newDeepest = deepestLevel;
+      const newExplored = nodesExplored + 1;
+
+      if (node.depth > deepestLevel) {
+        newDeepest = node.depth;
+      }
+
+      setCurrentDepth(newDepth);
+      setDeepestLevel(newDeepest);
+      setNodesExplored(newExplored);
 
       let result: ExpansionResponse | null = null;
       // Refactor to tanstack
@@ -241,7 +263,6 @@ export default function AppView() {
       }
 
       result = await response.json();
-
 
       if (result) {
         setData((prev) => {
@@ -313,13 +334,22 @@ export default function AppView() {
           }));
 
           fan();
-
+          
+          handleGraphSave({
+            nodes: [...prev.nodes, ...newNodes],
+            links: [...prev.links, ...newLinks],
+          }, {
+            currentDepth: newDepth,
+            nodesExplored: newExplored,
+            deepestLevel: newDeepest
+          });
           return {
             nodes: [...prev.nodes, ...newNodes],
             links: [...prev.links, ...newLinks],
           };
         });
       }
+
       nodeStatesRef.current[node.id] = 'idle';
     },
     [data.links],
@@ -348,7 +378,6 @@ export default function AppView() {
     return;
   }
 
-  console.log("ONAORDING COMPLETED ", onboardingCompleted);
   const existingInterests = getUserInterests(user);
 
   if (!interestsSelected && !onboardingCompleted) {
@@ -361,13 +390,16 @@ export default function AppView() {
     handleInterestsSelected(existingInterests);
   }
 
-  console.log(user.id);
 
   return (
     <div className={cn("min-h-screen w-full flex flex-col background-pattern")}>
-      <div className="fixed top-0 left-0">
+      <div className="fixed top-0 left-0 p-2">
         <Navbar />
-        <MetricPanel depthLevel={currentDepth} nodesExplored={nodesExplored} />
+        <MetricPanel
+          depthLevel={currentDepth}
+          nodesExplored={nodesExplored}
+          deepestLevel={deepestLevel}
+        />
       </div>
 
       <ForceGraph2D
@@ -397,23 +429,25 @@ export default function AppView() {
             (n) => n + fontSize * 0.2,
           );
 
-          console.log(node.type)
           const isResource = node.type === "resource";
           const isTopLevel = node.type === "top-level";
           const isLoading = nodeStatesRef.current[node.id] === "loading";
           const isHovered = hoveredNodeRef.current?.id === node.id;
 
           // Colour nodes based on states or type
-          const nodeColor =
-            (isHovered && !isLoading) ?
-              "oklch(0.6941 0.1233 238.24)"
-              : isResource
-                ? "oklch(0.7294 0.111 66.71)"
-                : isTopLevel ? "oklch(0.6735 0.0888 66.71)"
-                  : nodeStatesRef.current[node.id] === "loading"
-                    ? 'oklch(0.6765 0.0715 57.72)' : hasChildren(node.id)
-                      ? "oklch(0.6941 0.1233 238.24)"
-                      : "oklch(0.4176 0.0592 238.24)";
+          let nodeColor = "oklch(0.4176 0.0592 238.24)";
+
+          if (isLoading) {
+            nodeColor = "oklch(0.6765 0.0715 57.72)";
+          } else if (isHovered) {
+            nodeColor = "oklch(0.6941 0.1233 238.24)";
+          } else if (isTopLevel) {
+            nodeColor = "oklch(0.6941 0.1233 238.24)";
+          } else if (isResource) {
+            nodeColor = "oklch(0.7294 0.111 66.71)";
+          } else if (hasChildren(node.id)) {
+            nodeColor = "oklch(0.6941 0.1233 238.24)"
+          }
 
           if (!isResource) {
             // Topic nodes

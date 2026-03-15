@@ -1,13 +1,15 @@
 interface MetricPanelProps {
   depthLevel: number;
   nodesExplored: number;
+  deepestLevel: number;
 }
 
-export default function MetricPanel({ depthLevel, nodesExplored }: MetricPanelProps) {
+export default function MetricPanel({ depthLevel, nodesExplored, deepestLevel }: MetricPanelProps) {
   return (
-    <div className="p-2 w-fit">
-      <p className="font-jet">DEPTH LEVEL: {depthLevel}</p>
-      <p className="font-jet">NODES EXPLORED: {nodesExplored}</p>
+    <div className="p-2 w-fit font-bold font-jet">
+      <p>DEPTH LEVEL: {depthLevel}</p>
+      <p>NODES EXPLORED: {nodesExplored}</p>
+      <p>DEEPEST DEPTH: {deepestLevel}</p>
     </div>
   )
 }
